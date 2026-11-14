@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Навчальний AI-Помічник — Лабораторна 4</title>
+<!--
+  Інструкція запуску (Розділ 1.6):
+  1. Встановіть та запустіть Ollama:
+       ollama serve
+     (або з оптимізацією паралельності: OLLAMA_NUM_PARALLEL=4 ollama serve)
+  2. Завантажте локальну модель:
+       ollama pull qwen3:1.7b
+       ollama pull qwen3:0.6b
+  3. Запустіть локальний HTTP-сервер у теці застосунку (щоб уникнути помилки CORS при відкритті з диска):
+       python3 -m http.server 8000 --bind 127.0.0.1
+  4. Відкрийте у браузері:
+       http://localhost:8000/index.html
+-->
+<style>
+  :root {
+    --bg: #fcfcfb;
+    --surface: #f4f3ef;
+    --fg: #111110;
+    --muted: #6b6a65;
+    --line: #dfddd6;
+    --user-bg: #e7f0fc;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #15803d;
+    --warn: #b45309;
+    --error: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #181817;
+      --surface: #222220;
+      --fg: #f3f3f1;
+      --muted: #a1a09a;
+      --line: #363633;
+      --user-bg: #1e2c42;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --error: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    gap: 12px;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+  h1 { font-size: 19px; margin: 0; font-weight: 650; }
+  .subtitle { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    font-size: 12px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--muted);
+  }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.err { color: var(--error); border-color: var(--error); }
+  #fileBanner {
+    display: none;
+    padding: 10px 12px;
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    color: var(--error);
+    font-size: 13px;
+  }
+  details.box {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    font-size: 13.5px;
+  }
+  details.box summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--fg);
+    user-select: none;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+    gap: 8px 12px;
+    margin-top: 10px;
+  }
+  .grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .grid label.wide { grid-column: 1 / -1; }
+  input, select, textarea {
+    font: inherit;
+    font-size: 13.5px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  .toolbar label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12.5px;
+    color: var(--muted);
+    min-width: 0;
+  }
+  .toolbar select {
+    width: 100%;
+    min-width: 0;
+    text-overflow: ellipsis;
+  }
+  .hint {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin: 6px 0 0;
+  }
+  #messages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 240px;
+    padding: 4px 0;
+  }
+  .empty-state {
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 18px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+  .msg {
+    padding: 10px 12px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.48;
+  }
+  .msg.user {
+    background: var(--user-bg);
+    align-self: flex-end;
+    max-width: 86%;
+    border: 1px solid var(--line);
+  }
+  .msg.assistant {
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .msg.error {
+    border-color: var(--error);
+    color: var(--error);
+  }
+  .msg-header {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .stats {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--line);
+  }
+  .warning {
+    color: var(--warn);
+    font-size: 12.5px;
+    margin-top: 4px;
+  }
+  #statusLine {
+    font-size: 13px;
+    color: var(--muted);
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  form#chatForm {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  button {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 7px 14px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
+  button.secondary {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--line);
+  }
+  button.secondary:hover:not(:disabled) { background: var(--surface); }
+  button:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Навчальний AI-Помічник (Конспекти, Картки та Код)</h1>
+      <div class="subtitle">Лабораторна робота 4 · Локальна модель через OpenAI-сумісний API</div>
+    </div>
+    <div style="display: flex; gap: 6px; align-items: center;">
+      <span id="serverBadge" class="badge">Сервер: не перевірено</span>
+      <button id="checkServerBtn" type="button" class="secondary" style="padding: 4px 10px; font-size: 12.5px;">Перевірити API</button>
+    </div>
+  </header>
+
+  <div id="fileBanner">
+    Сторінку відкрито напряму з диска (<code>file://</code>), тому браузер може блокувати запити через CORS.
+    Запустіть у теці застосунку <code>python3 -m http.server 8000 --bind 127.0.0.1</code> і відкрийте
+    <code>http://localhost:8000/index.html</code>.
+  </div>
+
+  <!-- Налаштування підключення та обґрунтованих параметрів генерації -->
+  <details class="box" open>
+    <summary>Налаштування рантайму та параметрів генерації (Розділ 1.6)</summary>
+    <div class="grid">
+      <label>Адреса OpenAI API
+        <input id="baseUrl" value="http://localhost:11434/v1" placeholder="http://localhost:11434/v1">
+      </label>
+      <label>Локальна модель
+        <input id="model" list="modelList" value="qwen3:1.7b" placeholder="qwen3:1.7b">
+        <datalist id="modelList">
+          <option value="qwen3:1.7b">qwen3:1.7b (базова 1.7B Q4_K_M)</option>
+          <option value="qwen3:0.6b">qwen3:0.6b (оптимізована 0.6B Q4_K_M)</option>
+          <option value="qwen2.5:1.5b">qwen2.5:1.5b</option>
+          <option value="qwen2.5:0.5b">qwen2.5:0.5b</option>
+        </datalist>
+      </label>
+      <label>Temperature (0–2)
+        <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.2">
+      </label>
+      <label>Ліміт токенів (max_tokens)
+        <input id="maxTokens" type="number" min="16" max="2048" step="16" value="400">
+      </label>
+      <label>Режим міркування (Thinking)
+        <select id="reasoningEffort">
+          <option value="none" selected>none (вимкнено — швидкий TTFT)</option>
+          <option value="">за замовчуванням моделі</option>
+          <option value="low">low</option>
+        </select>
+      </label>
+      <label>Таймаут запиту, с
+        <input id="timeoutSec" type="number" min="5" max="300" value="60">
+      </label>
+      <label>Seed (фіксація)
+        <input id="seed" type="number" value="42">
+      </label>
+      <label>API-ключ (локально не обов'язковий)
+        <input id="apiKey" type="password" value="local" placeholder="local">
+      </label>
+      <label class="wide">Системний промпт (базова інструкція для моделі)
+        <textarea id="systemPrompt" rows="2"></textarea>
+      </label>
+    </div>
+    <p class="hint">
+      <strong>Обґрунтування параметрів:</strong> <code>temperature = 0.2</code> мінімізує галюцинації при роботі з конспектом і кодом;
+      обов'язковий ліміт <code>max_tokens = 400</code> запобігає зацикленню малої моделі;
+      <code>reasoning_effort = "none"</code> вимикає приховані токени роздумів, знижуючи затримку до першого токена (TTFT) на процесорі AMD Ryzen 5 5600H.
+    </p>
+  </details>
+
+  <!-- Панель готових тестових сценаріїв (Розділ 1.7) -->
+  <div class="toolbar">
+    <label>Тестовий сценарій (Розділ 1.7 — оберіть зі списку для швидкої підстановки у поле вводу):
+      <select id="scenarioSelect">
+        <option value="">— Оберіть сценарій для швидкої перевірки —</option>
+        <option value="s1">Сценарій 1 (Типовий): Картки з конспекту про квантизацію (fp16, bf16, int4)</option>
+        <option value="s2">Сценарій 2 (Типовий): Стислий конспект про метрики TTFT, TPOT і Throughput</option>
+        <option value="s3">Сценарій 3 (Типовий): Аналіз помилки CUDA bfloat16 на GPU Tesla T4</option>
+        <option value="s4">Сценарій 4 (Типовий): Python-функція розрахунку перцентиля p95</option>
+        <option value="s5">Сценарій 5 (Складний): Розрахунок бюджету пам'яті та стелі tokens/s для Ryzen 5 5600H</option>
+        <option value="s6">Сценарій 6 (Крайовий): Запит із хибним твердженням про temperature = 0</option>
+        <option value="s7">Сценарій 7 (Крайовий): Перевірка запобіжника max_tokens (рахунок від 1 до 500)</option>
+        <option value="s8">Сценарій 8 (Крайовий): Помилка токенізації літери «р» у слові «трансформер» та її виправлення</option>
+      </select>
+    </label>
+  </div>
+
+  <!-- Історія повідомлень -->
+  <div id="messages">
+    <div id="emptyState" class="empty-state">
+      Оберіть один із 8 тестових сценаріїв вище або введіть власний запит чи конспект у поле внизу та натисніть <strong>«Надіслати»</strong>.
+    </div>
+  </div>
+
+  <!-- Рядок статусу / індикатор очікування -->
+  <div id="statusLine">
+    <span id="statusText">Готово до роботи. Очікування запиту…</span>
+    <span id="lastMetricsText"></span>
+  </div>
+
+  <!-- Форма вводу -->
+  <form id="chatForm">
+    <textarea id="userInput" rows="4" placeholder="Вставте нотатки з лекції, фрагмент коду/логу або запитання… (Enter — надіслати, Shift+Enter — новий рядок)"></textarea>
+    <div class="btn-row">
+      <button id="sendBtn" type="submit">Надіслати</button>
+      <button id="stopBtn" type="button" class="secondary" disabled>Зупинити</button>
+      <button id="copyBtn" type="button" class="secondary">Скопіювати відповідь</button>
+      <button id="clearBtn" type="button" class="secondary">Очистити чат</button>
+    </div>
+  </form>
+</main>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+
+  const DEFAULT_SYSTEM_PROMPT =
+    "Ти — точний і лаконічний навчальний AI-помічник. Суворо дотримуйся інструкції у запиті користувача (створюй картки Питання-Відповідь, конспектуй тези, пояснюй помилки коду або виконуй розрахунки). Відповідай українською мовою.";
+
+  const SCENARIOS = {
+    s1: {
+      maxTokens: 400,
+      text: "Створи рівно 3 короткі картки для повторення у форматі «Картка N: Питання: ... Відповідь: ...» на основі цього конспекту:\n\nКвантизація — це зменшення розрядності ваг моделі (наприклад, з 16 біт у fp16/bf16 до 8 або 4 біт у int8/int4). Формат bf16 має такий самий діапазон, як fp32 (8 біт експоненти), тому не переповнюється при великих числах, а fp16 має вищу точність (10 біт мантиси), але діапазон лише до 65504. Квантизація в int8 майже не знижує якість, а в int2 модель ламається."
+    },
+    s2: {
+      maxTokens: 350,
+      text: "Виділи з цього тексту рівно 4 головні тези короткими маркованими пунктами без зайвої води:\n\nПід час роботи локального сервера мовної моделі вимірюють три основні показники швидкості: TTFT (Time To First Token) — час від надсилання запиту до появи першого токена відповіді (включає обробку промпту prefill та чергу); TPOT (Time Per Output Token) або tokens/s — швидкість генерації наступних токенів для одного користувача; Throughput — сумарна кількість токенів за секунду, яку сервер видає всім паралельним клієнтам разом. Для оцінки затримок використовують перцентилі p50 (медіана) та p95 (95% запитів швидші за це значення)."
+    },
+    s3: {
+      maxTokens: 350,
+      text: "Під час запуску моделі в Google Colab на відеокарті NVIDIA Tesla T4 виникла помилка:\nValueError: Bfloat16 is only supported on GPUs with compute capability of at least 8.0. Your Tesla T4 GPU has compute capability 7.5.\nКоротко поясни, чому вона виникла і як виправити код завантаження моделі."
+    },
+    s4: {
+      maxTokens: 350,
+      text: "Напиши коротку функцію Python percentile(values, q), яка приймає список чисел (затримок TTFT) і повертає q-й перцентиль (наприклад, q=95) з лінійною інтерполяцією без використання numpy, та покажи приклад виклику."
+    },
+    s5: {
+      maxTokens: 400,
+      text: "Ноутбук має процесор AMD Ryzen 5 5600H та 16 ГБ оперативної пам'яті DDR4-3200 у двоканальному режимі з пропускною здатністю 51.2 ГБ/с (вільно 5.7 ГіБ). Ми запускаємо модель qwen3:1.7b у квантизації Q4_K_M, ваги якої займають 1.28 ГБ. Порахуй: 1) скільки пам'яті потрібно моделі з запасом 30% (1.28 * 1.3) і чи вміститься вона у вільні 5.7 ГіБ; 2) теоретичну стелю швидкості генерації (tokens/s) за формулою 51.2 / 1.28."
+    },
+    s6: {
+      maxTokens: 300,
+      text: "Поясни, чому коли ми ставимо параметр temperature = 0 та seed = 1, мовна модель починає максимально фантазувати і щоразу видавати абсолютно різні випадкові відповіді? (Якщо у питанні є помилка — виправ її)."
+    },
+    s7: {
+      maxTokens: 80,
+      text: "Напиши підряд усі цілі числа від 1 до 500 словами через кому без пропусків."
+    },
+    s8: {
+      maxTokens: 250,
+      text: "Порахуй, скільки разів літера «р» трапляється у слові, якщо воно записане по літерах через дефіс: т - р - а - н - с - ф - о - р - м - е - р. Спочатку випиши кожну літеру з її порядковим номером, а потім назви точну кількість літер «р»."
+    }
+  };
+
+  const history = [];
+  let activeController = null;
+  let lastAssistantText = "";
+
+  if (window.location.protocol === "file:") {
+    $("fileBanner").style.display = "block";
+  }
+
+  $("systemPrompt").value = DEFAULT_SYSTEM_PROMPT;
+
+  function applySelectedScenario() {
+    const key = $("scenarioSelect").value;
+    if (!key || !SCENARIOS[key]) return;
+    const sc = SCENARIOS[key];
+    $("maxTokens").value = String(sc.maxTokens);
+    $("userInput").value = sc.text;
+    $("statusText").textContent = "Сценарій підставлено. Натисніть «Надіслати» для перевірки.";
+    $("userInput").focus();
+  }
+
+  $("scenarioSelect").addEventListener("change", () => {
+    if ($("scenarioSelect").value) applySelectedScenario();
+  });
+
+  function trimSlash(url) {
+    return url.replace(/\/+$/, "");
+  }
+
+  async function checkServerConnection() {
+    const baseUrl = trimSlash($("baseUrl").value.trim() || "http://localhost:11434/v1");
+    const apiKey = $("apiKey").value.trim();
+    const badge = $("serverBadge");
+    badge.className = "badge";
+    badge.textContent = "Перевірка…";
+    try {
+      const headers = apiKey ? { Authorization: "Bearer " + apiKey } : {};
+      const resp = await fetch(baseUrl + "/models", {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const models = Array.isArray(data.data) ? data.data.map((m) => m.id) : [];
+      if (models.length > 0) {
+        $("modelList").replaceChildren(...models.map((name) => new Option(name, name)));
+      }
+      badge.className = "badge ok";
+      badge.textContent = "Онлайн (" + (models.length || "OK") + " мод.)";
+      $("statusText").textContent = "З'єднання з OpenAI-сумісним сервером успішне.";
+    } catch (err) {
+      badge.className = "badge err";
+      badge.textContent = "Офлайн / Недоступний";
+      $("statusText").textContent =
+        "Сервер недоступний (" + err.message + "). Перевірте, що запущено `ollama serve`.";
+    }
+  }
+
+  $("checkServerBtn").addEventListener("click", checkServerConnection);
+
+  function addMessageBubble(role, labelText, initialContent) {
+    const empty = $("emptyState");
+    if (empty) empty.style.display = "none";
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg " + role;
+
+    const header = document.createElement("div");
+    header.className = "msg-header";
+    header.textContent = labelText;
+
+    const body = document.createElement("div");
+    body.textContent = initialContent;
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(body);
+    $("messages").appendChild(wrapper);
+    wrapper.scrollIntoView({ block: "end", behavior: "smooth" });
+    return { wrapper, body };
+  }
+
+  async function* readSSELines(response) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) yield line;
+    }
+    if (buffer) yield buffer;
+  }
+
+  async function sendRequest(userText) {
+    const baseUrl = trimSlash($("baseUrl").value.trim() || "http://localhost:11434/v1");
+    const model = $("model").value.trim() || "qwen3:1.7b";
+    const apiKey = $("apiKey").value.trim();
+    const sysPrompt = $("systemPrompt").value.trim();
+    const temperature = Number($("temperature").value);
+    const maxTokens = Math.max(1, Number($("maxTokens").value) || 400);
+    const timeoutSec = Math.max(5, Number($("timeoutSec").value) || 60);
+    const seedVal = $("seed").value.trim();
+    const reasoningEffort = $("reasoningEffort").value;
+
+    const scSelect = $("scenarioSelect");
+    const scLabel = scSelect.value ? scSelect.options[scSelect.selectedIndex].text.split(":")[0] : "Власний запит";
+    addMessageBubble("user", "Користувач · " + scLabel, userText);
+    const assistantBubble = addMessageBubble("assistant", "Модель · " + model, "⏳ Генерація відповіді…");
+
+    const reqMessages = [];
+    if (sysPrompt) reqMessages.push({ role: "system", content: sysPrompt });
+    for (const item of history) reqMessages.push(item);
+    reqMessages.push({ role: "user", content: userText });
+
+    const payload = {
+      model,
+      messages: reqMessages,
+      stream: true,
+      stream_options: { include_usage: true },
+      max_tokens: maxTokens,
+      temperature: Number.isNaN(temperature) ? 0.2 : temperature
+    };
+    if (seedVal !== "" && !Number.isNaN(Number(seedVal))) {
+      payload.seed = Number(seedVal);
+    }
+    if (reasoningEffort) {
+      payload.reasoning_effort = reasoningEffort;
+    }
+
+    activeController = new AbortController();
+    const combinedSignal = AbortSignal.any([
+      activeController.signal,
+      AbortSignal.timeout(timeoutSec * 1000)
+    ]);
+
+    $("sendBtn").disabled = true;
+    $("stopBtn").disabled = false;
+    $("statusText").textContent = "Надсилання запиту до " + baseUrl + "/chat/completions…";
+
+    const startTime = performance.now();
+    let firstTokenTime = null;
+    let answerText = "";
+    let completionTokens = null;
+    let finishReason = null;
+    let hadReasoning = false;
+
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (apiKey) headers.Authorization = "Bearer " + apiKey;
+
+      const response = await fetch(baseUrl + "/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+        signal: combinedSignal
+      });
+
+      if (!response.ok) {
+        const errBody = (await response.text()).slice(0, 250);
+        throw new Error("Сервер повернув статус " + response.status + ": " + errBody);
+      }
+
+      for await (const rawLine of readSSELines(response)) {
+        const line = rawLine.trim();
+        if (!line.startsWith("data:")) continue;
+        const dataStr = line.slice(5).trim();
+        if (dataStr === "[DONE]") break;
+
+        let chunk;
+        try {
+          chunk = JSON.parse(dataStr);
+        } catch {
+          continue;
+        }
+
+        if (chunk.usage && typeof chunk.usage.completion_tokens === "number") {
+          completionTokens = chunk.usage.completion_tokens;
+        }
+        const choice = chunk.choices && chunk.choices[0];
+        if (choice) {
+          if (choice.finish_reason) finishReason = choice.finish_reason;
+          const delta = choice.delta || {};
+          if (delta.reasoning || delta.reasoning_content) {
+            hadReasoning = true;
+            if (firstTokenTime === null) {
+              $("statusText").textContent = "Модель виконує внутрішнє міркування (thinking)…";
+            }
+          }
+          if (delta.content) {
+            if (firstTokenTime === null) {
+              firstTokenTime = performance.now();
+              $("statusText").textContent = "Отримання токенів у потоковому режимі (streaming)…";
+            }
+            answerText += delta.content;
+            assistantBubble.body.textContent = answerText;
+          }
+        }
+      }
+
+      const endTime = performance.now();
+      if (!answerText.trim()) {
+        throw new Error(
+          "Модель повернула порожню відповідь. Якщо модель витратила всі токени на міркування, встановіть Reasoning = none або збільште max_tokens."
+        );
+      }
+
+      history.push({ role: "user", content: userText });
+      history.push({ role: "assistant", content: answerText });
+      lastAssistantText = answerText;
+
+      const ttftSec = ((firstTokenTime ?? endTime) - startTime) / 1000;
+      const totalSec = (endTime - startTime) / 1000;
+      const genWindowSec = firstTokenTime ? (endTime - firstTokenTime) / 1000 : totalSec;
+      const approxTokens = completionTokens || Math.max(1, Math.round(answerText.length / 3.5));
+      const tokPerSec = approxTokens > 1 && genWindowSec > 0.02 ? (approxTokens - 1) / genWindowSec : null;
+
+      const statsDiv = document.createElement("div");
+      statsDiv.className = "stats";
+      let statsLine =
+        "TTFT: " + ttftSec.toFixed(2) + " с · Повна затримка: " + totalSec.toFixed(2) + " с · Токенів: " + approxTokens;
+      if (tokPerSec !== null) {
+        statsLine += " · Швидкість: " + tokPerSec.toFixed(1) + " tokens/s";
+      }
+      if (finishReason === "length") {
+        statsLine += " · [Зупинено лімітом max_tokens=" + maxTokens + "]";
+      }
+      statsDiv.textContent = statsLine;
+      assistantBubble.wrapper.appendChild(statsDiv);
+
+      if (hadReasoning) {
+        const warnDiv = document.createElement("div");
+        warnDiv.className = "warning";
+        warnDiv.textContent =
+          "Увага: модель використовувала режим міркування перед відповіддю (TTFT включає час роздумів).";
+        assistantBubble.wrapper.appendChild(warnDiv);
+      }
+
+      $("statusText").textContent = "Відповідь успішно отримано.";
+      $("lastMetricsText").textContent = "Останній запит: TTFT " + ttftSec.toFixed(2) + " с";
+      $("serverBadge").className = "badge ok";
+      $("serverBadge").textContent = "Онлайн (" + model + ")";
+    } catch (error) {
+      let friendlyMsg = error.message || "Невідома помилка";
+      if (activeController && activeController.signal.aborted) {
+        friendlyMsg = "Генерацію зупинено користувачем.";
+      } else if (error.name === "TimeoutError" || friendlyMsg.includes("timed out")) {
+        friendlyMsg =
+          "Перевищено час очікування (" + timeoutSec + " с). Модель занадто довго обробляє запит — спробуйте меншу модель (qwen3:0.6b) або зменште max_tokens.";
+      } else if (friendlyMsg.includes("Failed to fetch") || friendlyMsg.includes("NetworkError")) {
+        friendlyMsg =
+          "Не вдалося з'єднатися з локальним сервером за адресою " +
+          baseUrl +
+          ". Перевірте, що: 1) сервер запущено командою `ollama serve`; 2) завантажено модель `" +
+          model +
+          "`; 3) сторінку відкрито через локальний HTTP-сервер (`python3 -m http.server 8000`).";
+      }
+      assistantBubble.wrapper.classList.add("error");
+      assistantBubble.body.textContent = "Помилка: " + friendlyMsg;
+      $("statusText").textContent = "Запит завершився помилкою.";
+      $("serverBadge").className = "badge err";
+      $("serverBadge").textContent = "Помилка запиту";
+    } finally {
+      $("sendBtn").disabled = false;
+      $("stopBtn").disabled = true;
+      activeController = null;
+    }
+  }
+
+  $("chatForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = $("userInput").value.trim();
+    if (!text) {
+      $("statusText").textContent = "Введіть текст запиту або підставте тестовий сценарій.";
+      return;
+    }
+    $("userInput").value = "";
+    await sendRequest(text);
+    $("userInput").focus();
+  });
+
+  $("userInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      $("chatForm").requestSubmit();
+    }
+  });
+
+  $("stopBtn").addEventListener("click", () => {
+    if (activeController) activeController.abort();
+  });
+
+  $("clearBtn").addEventListener("click", () => {
+    history.length = 0;
+    lastAssistantText = "";
+    $("messages").replaceChildren();
+    const empty = document.createElement("div");
+    empty.id = "emptyState";
+    empty.className = "empty-state";
+    empty.textContent = "Історію очищено. Оберіть тестовий сценарій або введіть власний запит.";
+    $("messages").appendChild(empty);
+    $("statusText").textContent = "Чат очищено.";
+    $("lastMetricsText").textContent = "";
+  });
+
+  $("copyBtn").addEventListener("click", async () => {
+    if (!lastAssistantText) {
+      $("statusText").textContent = "Немає згенерованої відповіді для копіювання.";
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(lastAssistantText);
+      $("statusText").textContent = "Останню відповідь скопійовано в буфер обміну.";
+    } catch {
+      const temp = document.createElement("textarea");
+      temp.value = lastAssistantText;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand("copy");
+      document.body.removeChild(temp);
+      $("statusText").textContent = "Останню відповідь скопійовано.";
+    }
+  });
+})();
+</script>
+</body>
+</html>
