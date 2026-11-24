@@ -1,0 +1,11 @@
+section,model,task,config,params_M,val_loss,accuracy,f1,inference_sec
+3_minigpt,minigpt_v1,causal_lm_uk_wiki,"vocab=8000, context_len=64, n_layers=4, n_heads=4, embed_dim=128, max_iters=3000",2.856,4.818,,,0.42
+3_minigpt,minigpt_v2,causal_lm_uk_wiki,"vocab=8000, context_len=128, n_layers=6, n_heads=6, embed_dim=192, max_iters=3000",5.768,4.361,,,0.78
+3_minigpt,minigpt_v3,causal_lm_uk_wiki,"vocab=4000, context_len=128, n_layers=4, n_heads=4, embed_dim=128, max_iters=3000",1.836,4.079,,,0.39
+5_comparison,nlptown/bert-base-multilingual-uncased-sentiment,sentiment-analysis (uk),"default (stars>=4 -> positive, max_length=512)",167.36,,0.8,0.7895,0.48
+5_comparison,cardiffnlp/twitter-xlm-roberta-base-sentiment-multilingual,sentiment-analysis (uk),"default (threshold=0.50, max_length=512)",278.04,,0.9,0.9,0.64
+5_comparison,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli,zero-shot-sentiment (uk),"baseline (template='This example is {}.', threshold=0.50, max_length=512)",278.81,,0.9,0.9,0.82
+5_tuning,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli (exp1_ua_template),zero-shot-sentiment (uk),"template='Тональність цього відгуку є {}.', threshold=0.50, max_length=512",278.81,,0.95,0.9524,0.81
+5_tuning,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli (exp2_thresh_0.65),zero-shot-sentiment (uk),"template='Тональність цього відгуку є {}.', threshold=0.65, max_length=512",278.81,,0.95,0.9474,0.81
+5_tuning,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli (exp3_ descriptive_labels),zero-shot-sentiment (uk),"labels=['схвальний позитивний відгук', 'критичний негативний відгук'], threshold=0.55",278.81,,0.95,0.9524,0.84
+5_tuning,MoritzLaurer/mDeBERTa-v3-base-mnli-xnli (exp4_maxlen_16),zero-shot-sentiment (uk),"template='Тональність цього відгуку є {}.', threshold=0.50, max_length=16 (truncation)",278.81,,0.85,0.8421,0.59
